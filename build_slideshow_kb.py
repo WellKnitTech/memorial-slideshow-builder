@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import logging
 import math
+import re
 import shutil
 import subprocess
 import tempfile
@@ -25,6 +26,7 @@ QUALITY_PRESETS = {
 
 SUPPORTED_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 SUPPORTED_VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".m4v"}
+DEFAULT_OUTPUT_PATH = "out/slideshow.mp4"
 
 # EXIF tag IDs
 EXIF_DATETIME_ORIGINAL = 36867
@@ -407,6 +409,11 @@ def build_xfade_master(
     if not segments:
         raise RuntimeError("No segments to combine.")
 
+    # Be defensive if this function is called directly with a suffixless path.
+    # ffmpeg cannot infer a container format from names like "out".
+    if output.suffix == "":
+        output = output.with_suffix(".mp4")
+
     max_fade = max(0.0, seconds_per - (1.0 / max(1, fps)))
     if len(segments) > 1 and max_fade <= 0.0:
         raise RuntimeError(
@@ -519,10 +526,21 @@ def choose_quality_interactive() -> str:
         eprint("Invalid choice, please enter 1, 2, or 3.")
 
 
+def suggest_output_filename(name_line: str, include_title: bool) -> str:
+    if include_title and name_line.strip():
+        base = name_line.strip().lower()
+        base = re.sub(r"[^a-z0-9]+", "_", base).strip("_")
+        if base:
+            return f"{base}_slideshow.mp4"
+    return "memorial_slideshow.mp4"
+
+
+def default_output_path_for_settings(name_line: str, include_title: bool) -> str:
+    return str(Path("out") / suggest_output_filename(name_line=name_line, include_title=include_title))
+
 def collect_interactive_settings(args: argparse.Namespace) -> None:
     eprint("Starting new slideshow project setup...")
     args.photos = prompt("Photo input directory", "./photos")
-    args.output = prompt("Output MP4 path", "./out/slideshow.mp4")
 
     include_audio = prompt("Add background audio? (y/N)", "n").lower() in {"y", "yes"}
     if include_audio:
@@ -541,6 +559,9 @@ def collect_interactive_settings(args: argparse.Namespace) -> None:
         args.title_align = chosen_align if chosen_align in {"left", "center", "right"} else "center"
     else:
         args.no_title = True
+
+    output_default = default_output_path_for_settings(name_line=args.name_line, include_title=not args.no_title)
+    args.output = prompt("Output MP4 path", output_default)
 
     args.seconds = float(prompt("Seconds per slide", str(args.seconds)))
     args.fps = int(prompt("Frames per second", str(args.fps)))
@@ -571,7 +592,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--start-project", action="store_true", help="Launch interactive project setup menu.")
 
     ap.add_argument("--photos", help="Folder containing photos")
-    ap.add_argument("--output", default="out/slideshow.mp4", help="Output MP4 path")
+    ap.add_argument("--output", default=DEFAULT_OUTPUT_PATH, help="Output MP4 path")
     ap.add_argument("--audio", default="", help="Optional audio file path (mp3/wav/m4a)")
 
     ap.add_argument("--quality", choices=["720p", "1080p", "4k"], help="Resolution preset.")
@@ -641,7 +662,11 @@ def main() -> int:
         return 2
 
     photos_dir = Path(args.photos).expanduser().resolve()
-    out = normalize_output_path(args.output)
+
+    output_arg = args.output
+    if output_arg == DEFAULT_OUTPUT_PATH:
+        output_arg = default_output_path_for_settings(name_line=args.name_line, include_title=not args.no_title)
+    out = normalize_output_path(output_arg)
 
     if out.suffix.lower() not in SUPPORTED_VIDEO_EXTS:
         LOG.error(
