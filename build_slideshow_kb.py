@@ -85,6 +85,38 @@ def get_ffmpeg_encoders() -> set[str]:
     return found
 
 
+def encoder_smoke_test(codec: str, options: list[str]) -> bool:
+    """Return True when ffmpeg can initialize the encoder on this host."""
+    proc = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=128x72:r=1:d=0.2",
+            "-frames:v",
+            "1",
+            "-c:v",
+            codec,
+            *options,
+            "-f",
+            "null",
+            "-",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if proc.returncode == 0:
+        return True
+
+    LOG.warning("Encoder %s failed smoke test and will be skipped: %s", codec, proc.stderr.strip())
+    return False
+
+
 def pick_encoder(mode: str, crf: int, preset: str) -> EncodeConfig:
     encoders = get_ffmpeg_encoders()
 
@@ -121,19 +153,19 @@ def pick_encoder(mode: str, crf: int, preset: str) -> EncodeConfig:
         )
 
     if mode == "auto":
-        if has_nvenc:
+        if has_nvenc and encoder_smoke_test("h264_nvenc", ["-preset", "p5", "-rc", "vbr", "-cq", str(crf), "-b:v", "0"]):
             return EncodeConfig(
                 codec="h264_nvenc",
                 options=["-preset", "p5", "-rc", "vbr", "-cq", str(crf), "-b:v", "0"],
                 description="NVIDIA NVENC (auto)",
             )
-        if has_qsv:
+        if has_qsv and encoder_smoke_test("h264_qsv", ["-global_quality", str(crf)]):
             return EncodeConfig(
                 codec="h264_qsv",
                 options=["-global_quality", str(crf)],
                 description="Intel Quick Sync (auto)",
             )
-        if has_amf:
+        if has_amf and encoder_smoke_test("h264_amf", ["-quality", "quality", "-qp_i", str(crf), "-qp_p", str(crf)]):
             return EncodeConfig(
                 codec="h264_amf",
                 options=["-quality", "quality", "-qp_i", str(crf), "-qp_p", str(crf)],
