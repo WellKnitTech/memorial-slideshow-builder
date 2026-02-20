@@ -210,33 +210,103 @@ def try_load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
-def render_title_card(out_path: Path, canvas_size: tuple[int, int], title: str, subtitle: str, bg_rgb=(12, 12, 12)) -> None:
+def parse_hex_color(value: str, fallback: tuple[int, int, int]) -> tuple[int, int, int]:
+    text = value.strip().lstrip("#")
+    if len(text) != 6:
+        return fallback
+    try:
+        return tuple(int(text[i : i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
+    except Exception:
+        return fallback
+
+
+def draw_text_block(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    area_left: int,
+    area_right: int,
+    y: int,
+    color: tuple[int, int, int],
+    align: str,
+) -> int:
+    if not text:
+        return y
+
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+
+    if align == "left":
+        x = area_left
+    elif align == "right":
+        x = area_right - text_w
+    else:
+        x = area_left + ((area_right - area_left - text_w) // 2)
+
+    draw.text((x, y), text, font=font, fill=color)
+    return y + text_h
+
+
+def render_title_card(
+    out_path: Path,
+    canvas_size: tuple[int, int],
+    title: str,
+    subtitle: str,
+    name_line: str,
+    footer: str,
+    align: str,
+    bg_rgb: tuple[int, int, int],
+    title_rgb: tuple[int, int, int],
+    subtitle_rgb: tuple[int, int, int],
+    accent_rgb: tuple[int, int, int],
+) -> None:
     cw, ch = canvas_size
     img = Image.new("RGB", (cw, ch), bg_rgb)
     draw = ImageDraw.Draw(img)
 
-    title_font = try_load_font(size=int(ch * 0.075))
-    subtitle_font = try_load_font(size=int(ch * 0.035))
-
-    def text_size(txt: str, font) -> tuple[int, int]:
-        bbox = draw.textbbox((0, 0), txt, font=font)
-        return bbox[2] - bbox[0], bbox[3] - bbox[1]
+    title_font = try_load_font(size=int(ch * 0.078))
+    name_font = try_load_font(size=int(ch * 0.065))
+    subtitle_font = try_load_font(size=int(ch * 0.036))
+    footer_font = try_load_font(size=int(ch * 0.03))
 
     title = title.strip()
+    name_line = name_line.strip()
     subtitle = subtitle.strip()
+    footer = footer.strip()
 
-    title_w, title_h = text_size(title, title_font)
-    subtitle_w, subtitle_h = (0, 0)
+    line_heights: list[int] = []
+    for text, font in ((title, title_font), (name_line, name_font), (subtitle, subtitle_font), (footer, footer_font)):
+        if text:
+            bbox = draw.textbbox((0, 0), text, font=font)
+            line_heights.append(bbox[3] - bbox[1])
+
+    if not line_heights:
+        line_heights = [int(ch * 0.06)]
+
+    gaps = [int(ch * 0.017), int(ch * 0.02), int(ch * 0.028)]
+    total_h = sum(line_heights)
+    if len(line_heights) > 1:
+        total_h += sum(gaps[: len(line_heights) - 1])
+
+    content_left = int(cw * 0.08)
+    content_right = int(cw * 0.92)
+    y = (ch - total_h) // 2
+
+    if title:
+        y = draw_text_block(draw, title, title_font, content_left, content_right, y, title_rgb, align)
+        y += int(ch * 0.017)
+
+    if name_line:
+        y = draw_text_block(draw, name_line, name_font, content_left, content_right, y, accent_rgb, align)
+        y += int(ch * 0.02)
+
     if subtitle:
-        subtitle_w, subtitle_h = text_size(subtitle, subtitle_font)
+        y = draw_text_block(draw, subtitle, subtitle_font, content_left, content_right, y, subtitle_rgb, align)
+        y += int(ch * 0.028)
 
-    gap = int(ch * 0.02) if subtitle else 0
-    total_h = title_h + (subtitle_h + gap if subtitle else 0)
-    y0 = (ch - total_h) // 2
-
-    draw.text(((cw - title_w) // 2, y0), title, font=title_font, fill=(235, 235, 235))
-    if subtitle:
-        draw.text(((cw - subtitle_w) // 2, y0 + title_h + gap), subtitle, font=subtitle_font, fill=(200, 200, 200))
+    if footer:
+        draw_text_block(draw, footer, footer_font, content_left, content_right, y, subtitle_rgb, align)
 
     img.save(out_path, "JPEG", quality=92, optimize=True)
 
@@ -444,6 +514,19 @@ def collect_interactive_settings(args: argparse.Namespace) -> None:
         args.audio = prompt("Audio file path", "./audio/track.mp3")
 
     args.quality = choose_quality_interactive()
+
+    include_title = prompt("Include an opening title card? (Y/n)", "y").lower() in {"y", "yes"}
+    if include_title:
+        args.no_title = False
+        args.title = prompt("Top title", args.title)
+        args.name_line = prompt("Name / honoree line", args.name_line)
+        args.subtitle = prompt("Subtitle (dates, message, etc.)", args.subtitle)
+        args.footer = prompt("Footer line (service info, quote, etc.)", args.footer)
+        chosen_align = prompt("Title alignment (left/center/right)", args.title_align).lower()
+        args.title_align = chosen_align if chosen_align in {"left", "center", "right"} else "center"
+    else:
+        args.no_title = True
+
     args.seconds = float(prompt("Seconds per slide", str(args.seconds)))
     args.fps = int(prompt("Frames per second", str(args.fps)))
 
@@ -476,9 +559,16 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--zoom-end", type=float, default=1.06, help="Final zoom factor (subtle: 1.05-1.10)")
 
     ap.add_argument("--title", default="In Loving Memory", help="Optional title card text")
+    ap.add_argument("--name-line", default="", help="Name or primary line shown on the title card")
     ap.add_argument("--subtitle", default="", help="Optional subtitle")
+    ap.add_argument("--footer", default="", help="Optional footer line on title card")
     ap.add_argument("--title-seconds", type=float, default=7.0, help="Desired title hold time (will be normalized)")
     ap.add_argument("--no-title", action="store_true", help="Disable title card")
+    ap.add_argument("--title-align", default="center", choices=["left", "center", "right"])
+    ap.add_argument("--title-bg", default="0c0c0c", help="Title card background color in hex, e.g. 0c0c0c")
+    ap.add_argument("--title-color", default="ebebeb", help="Main title color in hex")
+    ap.add_argument("--subtitle-color", default="c8c8c8", help="Subtitle/footer color in hex")
+    ap.add_argument("--accent-color", default="d8c080", help="Name line color in hex")
 
     ap.add_argument("--audio-fade-in", type=float, default=2.5)
     ap.add_argument("--audio-fade-out", type=float, default=3.5)
@@ -545,7 +635,11 @@ def main() -> int:
 
     width, height = resolve_dimensions(args.quality, args.width, args.height)
     canvas = (width, height)
-    bg_rgb = (12, 12, 12)
+    frame_bg_rgb = (12, 12, 12)
+    title_bg_rgb = parse_hex_color(args.title_bg, frame_bg_rgb)
+    title_rgb = parse_hex_color(args.title_color, (235, 235, 235))
+    subtitle_rgb = parse_hex_color(args.subtitle_color, (200, 200, 200))
+    accent_rgb = parse_hex_color(args.accent_color, (216, 192, 128))
 
     with tempfile.TemporaryDirectory(prefix="memorial_slideshow_") as tmp:
         tmp_dir = Path(tmp)
@@ -556,21 +650,29 @@ def main() -> int:
 
         stills: list[Path] = []
 
-        if not args.no_title and args.title.strip():
+        has_title_content = any((args.title.strip(), args.name_line.strip(), args.subtitle.strip(), args.footer.strip()))
+
+        if not args.no_title and has_title_content:
             title_still = frames_dir / "still_00000.jpg"
             render_title_card(
                 out_path=title_still,
                 canvas_size=canvas,
                 title=args.title.strip(),
                 subtitle=args.subtitle.strip(),
-                bg_rgb=bg_rgb,
+                name_line=args.name_line.strip(),
+                footer=args.footer.strip(),
+                align=args.title_align,
+                bg_rgb=title_bg_rgb,
+                title_rgb=title_rgb,
+                subtitle_rgb=subtitle_rgb,
+                accent_rgb=accent_rgb,
             )
             stills.append(title_still)
 
         for idx, it in enumerate(survivors, start=1):
             try:
                 with Image.open(it.path) as im:
-                    frame = fit_to_canvas(im, canvas, bg_rgb=bg_rgb, margin_px=args.margin)
+                    frame = fit_to_canvas(im, canvas, bg_rgb=frame_bg_rgb, margin_px=args.margin)
                     fp = frames_dir / f"still_{idx:05d}.jpg"
                     frame.save(fp, "JPEG", quality=92, optimize=True)
                     stills.append(fp)
@@ -583,7 +685,9 @@ def main() -> int:
 
         segments: list[Path] = []
 
-        if not args.no_title and args.title.strip():
+        has_title_content = any((args.title.strip(), args.name_line.strip(), args.subtitle.strip(), args.footer.strip()))
+
+        if not args.no_title and has_title_content:
             title_segments = normalize_title_segments(
                 title_still=stills[0],
                 seg_dir=seg_dir,

@@ -36,7 +36,8 @@ You will be prompted to choose:
 2. Output MP4 file path
 3. Whether to add audio
 4. Output quality (`720p`, `1080p`, `4k`)
-5. Timing settings
+5. Title card personalization (name, subtitle, colors, alignment)
+6. Timing settings
 
 ## Quick start (scripted)
 
@@ -46,7 +47,44 @@ python3 build_slideshow_kb.py \
   --output ./out/slideshow_4k.mp4 \
   --quality 4k \
   --seconds 6 \
-  --fps 30
+  --fps 30 \
+  --title "In Loving Memory" \
+  --name-line "Jane Doe" \
+  --subtitle "1950-2024" \
+  --footer "Forever in our hearts" \
+  --title-align center \
+  --accent-color d8c080
+```
+
+
+## Title card customization
+
+Use these options to fully script title-card personalization:
+
+- `--title` main heading
+- `--name-line` prominent honoree name line
+- `--subtitle` secondary line (dates/message)
+- `--footer` optional bottom line (quote/service text)
+- `--title-align` (`left`, `center`, `right`)
+- `--title-bg` background hex color
+- `--title-color` main title hex color
+- `--subtitle-color` subtitle/footer hex color
+- `--accent-color` name line hex color
+
+Example:
+
+```bash
+python3 build_slideshow_kb.py \
+  --photos ./photos \
+  --output ./out/slideshow.mp4 \
+  --name-line "Jane Doe" \
+  --subtitle "1950-2024" \
+  --footer "Forever remembered" \
+  --title-align left \
+  --title-bg 101018 \
+  --title-color f6f2e8 \
+  --subtitle-color c9c4b8 \
+  --accent-color d8c080
 ```
 
 ## Wrapper scripts
