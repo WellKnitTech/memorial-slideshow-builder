@@ -42,6 +42,13 @@ class PhotoItem:
     dhash64: int
 
 
+@dataclass(frozen=True)
+class EncodeConfig:
+    codec: str
+    options: list[str]
+    description: str
+
+
 def eprint(msg: str) -> None:
     print(msg)
 
@@ -58,6 +65,86 @@ def run_cmd(cmd: list[str]) -> None:
         raise RuntimeError(
             f"Command failed.\nCMD: {' '.join(cmd)}\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
         )
+
+
+def get_ffmpeg_encoders() -> set[str]:
+    proc = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-encoders"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    if proc.returncode != 0:
+        return set()
+
+    found: set[str] = set()
+    for line in proc.stdout.splitlines():
+        parts = line.strip().split()
+        if len(parts) >= 2 and parts[0].startswith("V"):
+            found.add(parts[1])
+    return found
+
+
+def pick_encoder(mode: str, crf: int, preset: str) -> EncodeConfig:
+    encoders = get_ffmpeg_encoders()
+
+    has_nvenc = "h264_nvenc" in encoders and (shutil.which("nvidia-smi") is not None or Path("/dev/nvidia0").exists())
+    has_qsv = "h264_qsv" in encoders and Path("/dev/dri/renderD128").exists()
+
+    if mode == "nvidia":
+        if not has_nvenc:
+            raise RuntimeError("--encoder nvidia was requested, but h264_nvenc is not available on this system.")
+        return EncodeConfig(
+            codec="h264_nvenc",
+            options=["-preset", "p5", "-rc", "vbr", "-cq", str(crf), "-b:v", "0"],
+            description="NVIDIA NVENC",
+        )
+
+    has_amf = "h264_amf" in encoders
+
+    if mode == "qsv":
+        if not has_qsv:
+            raise RuntimeError("--encoder qsv was requested, but h264_qsv is not available on this system.")
+        return EncodeConfig(
+            codec="h264_qsv",
+            options=["-global_quality", str(crf)],
+            description="Intel Quick Sync",
+        )
+
+    if mode == "amd":
+        if not has_amf:
+            raise RuntimeError("--encoder amd was requested, but h264_amf is not available on this system.")
+        return EncodeConfig(
+            codec="h264_amf",
+            options=["-quality", "quality", "-qp_i", str(crf), "-qp_p", str(crf)],
+            description="AMD AMF",
+        )
+
+    if mode == "auto":
+        if has_nvenc:
+            return EncodeConfig(
+                codec="h264_nvenc",
+                options=["-preset", "p5", "-rc", "vbr", "-cq", str(crf), "-b:v", "0"],
+                description="NVIDIA NVENC (auto)",
+            )
+        if has_qsv:
+            return EncodeConfig(
+                codec="h264_qsv",
+                options=["-global_quality", str(crf)],
+                description="Intel Quick Sync (auto)",
+            )
+        if has_amf:
+            return EncodeConfig(
+                codec="h264_amf",
+                options=["-quality", "quality", "-qp_i", str(crf), "-qp_p", str(crf)],
+                description="AMD AMF (auto)",
+            )
+
+    return EncodeConfig(
+        codec="libx264",
+        options=["-preset", preset, "-crf", str(crf)],
+        description="CPU x264",
+    )
 
 
 def sha256_file(p: Path, chunk_size: int = 1024 * 1024) -> str:
@@ -322,8 +409,7 @@ def make_kb_segment(
     seconds: float,
     fps: int,
     zoom_end: float,
-    crf: int,
-    preset: str,
+    encode: EncodeConfig,
 ) -> None:
     total_frames = max(1, int(round(seconds * fps)))
 
@@ -341,11 +427,8 @@ def make_kb_segment(
                 "-vf",
                 f"scale={width}:{height},format=yuv420p,fps={fps}",
                 "-c:v",
-                "libx264",
-                "-preset",
-                preset,
-                "-crf",
-                str(crf),
+                encode.codec,
+                *encode.options,
                 "-pix_fmt",
                 "yuv420p",
                 "-movflags",
@@ -380,11 +463,8 @@ def make_kb_segment(
             "-r",
             str(fps),
             "-c:v",
-            "libx264",
-            "-preset",
-            preset,
-            "-crf",
-            str(crf),
+            encode.codec,
+            *encode.options,
             "-pix_fmt",
             "yuv420p",
             "-movflags",
@@ -400,8 +480,7 @@ def build_xfade_master(
     seconds_per: float,
     fade_seconds: float,
     fps: int,
-    crf: int,
-    preset: str,
+    encode: EncodeConfig,
     audio_path: Optional[Path],
     audio_fade_in: float,
     audio_fade_out: float,
@@ -461,11 +540,8 @@ def build_xfade_master(
 
     cmd += [
         "-c:v",
-        "libx264",
-        "-preset",
-        preset,
-        "-crf",
-        str(crf),
+        encode.codec,
+        *encode.options,
         "-pix_fmt",
         "yuv420p",
         "-movflags",
@@ -483,8 +559,7 @@ def normalize_title_segments(
     width: int,
     height: int,
     fps: int,
-    crf: int,
-    preset: str,
+    encode: EncodeConfig,
 ) -> list[Path]:
     title_len = max(title_seconds, seconds_per)
     n = int(math.ceil(title_len / seconds_per))
@@ -499,8 +574,7 @@ def normalize_title_segments(
             seconds=seconds_per,
             fps=fps,
             zoom_end=1.0,
-            crf=crf,
-            preset=preset,
+            encode=encode,
         )
         segments.append(seg)
     return segments
@@ -631,6 +705,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     ap.add_argument("--crf", type=int, default=18, help="x264 CRF quality (lower is higher quality). 18 is excellent.")
     ap.add_argument("--preset", default="medium", choices=["slow", "medium", "fast"], help="Encoding speed vs efficiency.")
+    ap.add_argument(
+        "--encoder",
+        default="auto",
+        choices=["auto", "cpu", "nvidia", "qsv", "amd"],
+        help="Video encoder selection: auto-detect GPU when available, or force cpu/nvidia/qsv/amd.",
+    )
     ap.add_argument("--loglevel", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return ap
 
@@ -714,6 +794,9 @@ def main() -> int:
     title_rgb = parse_hex_color(args.title_color, (235, 235, 235))
     subtitle_rgb = parse_hex_color(args.subtitle_color, (200, 200, 200))
     accent_rgb = parse_hex_color(args.accent_color, (216, 192, 128))
+    encoder_mode = "cpu" if args.encoder == "cpu" else args.encoder
+    encode = pick_encoder(encoder_mode, args.crf, args.preset)
+    LOG.info("Using encoder: %s (%s)", encode.description, encode.codec)
 
     with tempfile.TemporaryDirectory(prefix="memorial_slideshow_") as tmp:
         tmp_dir = Path(tmp)
@@ -770,8 +853,7 @@ def main() -> int:
                 width=width,
                 height=height,
                 fps=args.fps,
-                crf=args.crf,
-                preset=args.preset,
+                encode=encode,
             )
             segments.extend(title_segments)
             start_idx = 1
@@ -789,8 +871,7 @@ def main() -> int:
                 seconds=args.seconds,
                 fps=args.fps,
                 zoom_end=zoom_end,
-                crf=args.crf,
-                preset=args.preset,
+                encode=encode,
             )
             segments.append(seg)
             if (i + 1) % 15 == 0:
@@ -802,8 +883,7 @@ def main() -> int:
             seconds_per=args.seconds,
             fade_seconds=args.fade,
             fps=args.fps,
-            crf=args.crf,
-            preset=args.preset,
+            encode=encode,
             audio_path=audio_path,
             audio_fade_in=args.audio_fade_in,
             audio_fade_out=args.audio_fade_out,
