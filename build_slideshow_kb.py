@@ -24,6 +24,7 @@ QUALITY_PRESETS = {
 }
 
 SUPPORTED_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
+SUPPORTED_VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".m4v"}
 
 # EXIF tag IDs
 EXIF_DATETIME_ORIGINAL = 36867
@@ -551,6 +552,18 @@ def resolve_dimensions(quality: str | None, width: int, height: int) -> tuple[in
     return width, height
 
 
+def normalize_output_path(raw_output: str) -> Path:
+    out = Path(raw_output).expanduser().resolve()
+
+    if out.exists() and out.is_dir():
+        return out / "slideshow.mp4"
+
+    if out.suffix:
+        return out
+
+    return out.with_suffix(".mp4")
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="Build a tasteful memorial slideshow MP4 with EXIF date ordering, de-dup, Ken Burns, and fades."
@@ -628,7 +641,16 @@ def main() -> int:
         return 2
 
     photos_dir = Path(args.photos).expanduser().resolve()
-    out = Path(args.output).expanduser().resolve()
+    out = normalize_output_path(args.output)
+
+    if out.suffix.lower() not in SUPPORTED_VIDEO_EXTS:
+        LOG.error(
+            "Unsupported output extension '%s'. Use one of: %s",
+            out.suffix or "(none)",
+            ", ".join(sorted(SUPPORTED_VIDEO_EXTS)),
+        )
+        return 2
+
     out.parent.mkdir(parents=True, exist_ok=True)
 
     if not photos_dir.is_dir():
