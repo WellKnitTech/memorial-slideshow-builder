@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+python3 build_slideshow_kb.py \
+  --photos ./photos \
+  --output ./out/slideshow_1080p.mp4 \
+  --seconds 6 \
+  --fade 1 \
+  --fps 30 \
+  --width 1920 --height 1080 \
+  --zoom-end 1.06 \
+  --dedup-mode both \
+  --dhash-threshold 6 \
+  --title "In Loving Memory"

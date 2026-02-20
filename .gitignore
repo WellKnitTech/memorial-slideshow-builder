@@ -1,0 +1,13 @@
+# Output files
+out/
+
+# User-provided photos/audio
+photos/
+audio/
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
