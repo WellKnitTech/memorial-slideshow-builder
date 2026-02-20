@@ -15,6 +15,7 @@ Create MP4 memorial slideshows from a folder of photos, with optional background
   - `4k` (3840x2160)
 - CLI mode for scripted runs
 - Optional audio fade-in / fade-out
+- Encoder selection (`--encoder auto|cpu|nvidia|qsv`) with hardware auto-detection
 
 ## Installation
 
@@ -86,6 +87,28 @@ python3 build_slideshow_kb.py \
   --subtitle-color c9c4b8 \
   --accent-color d8c080
 ```
+
+
+## Hardware-accelerated encoding
+
+The builder can automatically use hardware encoders when available:
+
+- `--encoder auto` (default): prefers NVIDIA NVENC, then Intel Quick Sync, else CPU (`libx264`)
+- `--encoder nvidia`: force NVIDIA NVENC (`h264_nvenc`)
+- `--encoder qsv`: force Intel Quick Sync (`h264_qsv`)
+- `--encoder cpu`: force software x264
+
+Example:
+
+```bash
+python3 build_slideshow_kb.py \
+  --photos ./photos \
+  --output ./out/slideshow.mp4 \
+  --quality 1080p \
+  --encoder auto
+```
+
+If a forced encoder is unavailable on your machine, the script exits with a clear error.
 
 ## Wrapper scripts
 
