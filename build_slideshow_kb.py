@@ -406,7 +406,18 @@ def build_xfade_master(
     if not segments:
         raise RuntimeError("No segments to combine.")
 
-    fade = min(fade_seconds, max(0.2, seconds_per * 0.5))
+    max_fade = max(0.0, seconds_per - (1.0 / max(1, fps)))
+    if len(segments) > 1 and max_fade <= 0.0:
+        raise RuntimeError(
+            "Per-slide duration is too short for transitions at the selected FPS. "
+            "Increase --seconds or decrease --fps."
+        )
+
+    requested_fade = max(0.0, fade_seconds)
+    fade = min(requested_fade, max_fade)
+    if len(segments) > 1 and fade <= 0.0:
+        fade = min(0.2, max_fade)
+
     total_video = (len(segments) * seconds_per) - ((len(segments) - 1) * fade)
 
     inputs: list[str] = []
@@ -430,12 +441,15 @@ def build_xfade_master(
     if audio_path:
         cmd += ["-stream_loop", "-1", "-i", str(audio_path)]
         fade_out_start = max(0.0, total_video - audio_fade_out)
-        af = (
-            f"afade=t=in:st=0:d={audio_fade_in:.3f},"
-            f"afade=t=out:st={fade_out_start:.3f}:d={audio_fade_out:.3f},"
-            f"atrim=0:{total_video:.3f}"
-        )
-        cmd += ["-map", f"[{current}]", "-map", f"{len(segments)}:a", "-af", af, "-shortest"]
+
+        af_parts = []
+        if audio_fade_in > 0:
+            af_parts.append(f"afade=t=in:st=0:d={audio_fade_in:.3f}")
+        if audio_fade_out > 0:
+            af_parts.append(f"afade=t=out:st={fade_out_start:.3f}:d={audio_fade_out:.3f}")
+        af_parts.append(f"atrim=0:{total_video:.3f}")
+
+        cmd += ["-map", f"{len(segments)}:a", "-af", ",".join(af_parts), "-shortest"]
 
     cmd += [
         "-c:v",
@@ -599,6 +613,19 @@ def main() -> int:
     logging.basicConfig(level=getattr(logging, args.loglevel), format="%(asctime)s %(levelname)s %(message)s")
 
     check_ffmpeg()
+
+    if args.seconds <= 0:
+        LOG.error("--seconds must be greater than 0.")
+        return 2
+    if args.fps <= 0:
+        LOG.error("--fps must be greater than 0.")
+        return 2
+    if args.fade < 0:
+        LOG.error("--fade cannot be negative.")
+        return 2
+    if args.audio_fade_in < 0 or args.audio_fade_out < 0:
+        LOG.error("--audio-fade-in and --audio-fade-out cannot be negative.")
+        return 2
 
     photos_dir = Path(args.photos).expanduser().resolve()
     out = Path(args.output).expanduser().resolve()
