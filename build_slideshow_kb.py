@@ -434,7 +434,8 @@ def render_title_card(
     if footer:
         draw_text_block(draw, footer, footer_font, content_left, content_right, y, subtitle_rgb, align)
 
-    img.save(out_path, "JPEG", quality=92, optimize=True)
+    # Keep title source lossless so subtle zooms do not amplify JPEG artifacts.
+    img.save(out_path, "PNG", optimize=True)
 
 
 def make_kb_segment(
@@ -482,15 +483,21 @@ def make_kb_segment(
     x_expr = "iw/2-(iw/zoom/2)"
     y_expr = "ih/2-(ih/zoom/2)"
 
-    # Pre-upscale slightly before zoompan so ffmpeg has more subpixel detail to
-    # sample from while the crop window is moving. This removes visible
-    # frame-to-frame jitter/shimmer on slow Ken Burns zooms.
-    pre_upscale = 2
+    # Render the zoom at a significantly higher internal resolution and only
+    # downscale at the very end. This aggressively reduces frame-to-frame
+    # stepping/shimmer from zoompan's crop math and keeps motion visually
+    # stable even on very subtle Ken Burns moves.
+    pre_upscale = 4
+    zoom_render_scale = 2
+    zoom_w = width * zoom_render_scale
+    zoom_h = height * zoom_render_scale
 
     vf = (
         f"scale=iw*{pre_upscale}:ih*{pre_upscale}:flags=lanczos,"
         f"zoompan=z='{z_expr}':x='{x_expr}':y='{y_expr}':d={total_frames}:"
-        f"s={width}x{height}:fps={fps},format=yuv420p"
+        f"s={zoom_w}x{zoom_h}:fps={fps},"
+        f"scale={width}:{height}:flags=lanczos+accurate_rnd+full_chroma_int,"
+        f"format=yuv420p"
     )
 
     run_cmd(
@@ -859,7 +866,7 @@ def main() -> int:
         has_title_content = any((args.title.strip(), args.name_line.strip(), args.subtitle.strip(), args.footer.strip()))
 
         if not args.no_title and has_title_content:
-            title_still = frames_dir / "still_00000.jpg"
+            title_still = frames_dir / "still_00000.png"
             render_title_card(
                 out_path=title_still,
                 canvas_size=canvas,
@@ -879,8 +886,10 @@ def main() -> int:
             try:
                 with Image.open(it.path) as im:
                     frame = fit_to_canvas(im, canvas, bg_rgb=frame_bg_rgb, margin_px=args.margin)
-                    fp = frames_dir / f"still_{idx:05d}.jpg"
-                    frame.save(fp, "JPEG", quality=92, optimize=True)
+                    fp = frames_dir / f"still_{idx:05d}.png"
+                    # Keep intermediate stills lossless to avoid micro-shimmer
+                    # from JPEG ringing during slow zoom sampling.
+                    frame.save(fp, "PNG", optimize=True)
                     stills.append(fp)
             except Exception as e:
                 LOG.warning("Skipping %s: %s", it.path, e)
