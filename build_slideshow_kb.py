@@ -824,9 +824,14 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--fade", type=float, default=1.0, help="Crossfade duration in seconds")
     ap.add_argument("--fps", type=int, default=30, help="Frames per second")
 
-    ap.add_argument("--width", type=int, default=1920)
-    ap.add_argument("--height", type=int, default=1080)
-    ap.add_argument("--margin", type=int, default=60)
+    ap.add_argument("--width", type=int, default=1920, help="Output width in pixels (> 0) when --quality is not set.")
+    ap.add_argument("--height", type=int, default=1080, help="Output height in pixels (> 0) when --quality is not set.")
+    ap.add_argument(
+        "--margin",
+        type=int,
+        default=60,
+        help="Inner frame margin in pixels (>= 0, and less than half of the selected width/height).",
+    )
 
     ap.add_argument("--zoom-end", type=float, default=1.06, help="Final zoom factor (subtle: 1.05-1.10)")
     ap.add_argument(
@@ -911,6 +916,20 @@ def main() -> int:
         LOG.error("--audio-fade-in and --audio-fade-out cannot be negative.")
         return 2
 
+    width, height = resolve_dimensions(args.quality, args.width, args.height)
+    if width <= 0:
+        LOG.error("--width must be greater than 0.")
+        return 2
+    if height <= 0:
+        LOG.error("--height must be greater than 0.")
+        return 2
+    if args.margin < 0:
+        LOG.error("--margin must be greater than or equal to 0.")
+        return 2
+    if args.margin * 2 >= min(width, height):
+        LOG.error("--margin must leave usable content area: require --margin * 2 < min(--width, --height).")
+        return 2
+
     photos_dir = Path(args.photos).expanduser().resolve()
 
     output_arg = args.output
@@ -965,7 +984,6 @@ def main() -> int:
         LOG.error("All photos were removed by de-dup. Try --dedup-mode exact or --dhash-threshold higher.")
         return 2
 
-    width, height = resolve_dimensions(args.quality, args.width, args.height)
     canvas = (width, height)
     frame_bg_rgb = (12, 12, 12)
     title_bg_rgb = parse_hex_color(args.title_bg, frame_bg_rgb)
