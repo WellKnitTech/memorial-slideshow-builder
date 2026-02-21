@@ -482,15 +482,21 @@ def make_kb_segment(
     x_expr = "iw/2-(iw/zoom/2)"
     y_expr = "ih/2-(ih/zoom/2)"
 
-    # Pre-upscale slightly before zoompan so ffmpeg has more subpixel detail to
-    # sample from while the crop window is moving. This removes visible
-    # frame-to-frame jitter/shimmer on slow Ken Burns zooms.
-    pre_upscale = 2
+    # Render the zoom at a significantly higher internal resolution and only
+    # downscale at the very end. This aggressively reduces frame-to-frame
+    # stepping/shimmer from zoompan's crop math and keeps motion visually
+    # stable even on very subtle Ken Burns moves.
+    pre_upscale = 4
+    zoom_render_scale = 2
+    zoom_w = width * zoom_render_scale
+    zoom_h = height * zoom_render_scale
 
     vf = (
         f"scale=iw*{pre_upscale}:ih*{pre_upscale}:flags=lanczos,"
         f"zoompan=z='{z_expr}':x='{x_expr}':y='{y_expr}':d={total_frames}:"
-        f"s={width}x{height}:fps={fps},format=yuv420p"
+        f"s={zoom_w}x{zoom_h}:fps={fps},"
+        f"scale={width}:{height}:flags=lanczos+accurate_rnd+full_chroma_int,"
+        f"format=yuv420p"
     )
 
     run_cmd(
