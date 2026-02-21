@@ -442,10 +442,11 @@ def make_kb_segment(
     fps: int,
     zoom_end: float,
     encode: EncodeConfig,
+    zoom_start: float = 1.0,
 ) -> None:
     total_frames = max(1, int(round(seconds * fps)))
 
-    if zoom_end <= 1.00001:
+    if abs(zoom_end - zoom_start) <= 0.00001:
         run_cmd(
             [
                 "ffmpeg",
@@ -470,8 +471,10 @@ def make_kb_segment(
         )
         return
 
-    z_step = (zoom_end - 1.0) / max(1, (total_frames - 1))
-    z_expr = f"min(1.0+{z_step:.10f}*on,{zoom_end:.5f})"
+    z_step = (zoom_end - zoom_start) / max(1, (total_frames - 1))
+    min_zoom = min(zoom_start, zoom_end)
+    max_zoom = max(zoom_start, zoom_end)
+    z_expr = f"min(max({zoom_start:.5f}+{z_step:.10f}*on,{min_zoom:.5f}),{max_zoom:.5f})"
     x_expr = "iw/2-(iw/zoom/2)"
     y_expr = "ih/2-(ih/zoom/2)"
 
@@ -715,6 +718,12 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--margin", type=int, default=60)
 
     ap.add_argument("--zoom-end", type=float, default=1.06, help="Final zoom factor (subtle: 1.05-1.10)")
+    ap.add_argument(
+        "--zoom-style",
+        default="alternate",
+        choices=["alternate", "in"],
+        help="Zoom animation style: alternate between zoom-in/out, or always zoom-in.",
+    )
 
     ap.add_argument("--title", default="In Loving Memory", help="Optional title card text")
     ap.add_argument("--name-line", default="", help="Name or primary line shown on the title card")
@@ -898,6 +907,11 @@ def main() -> int:
 
         zoom_end = max(1.0, args.zoom_end)
         for i, still in enumerate(stills[start_idx:], start=0):
+            zoom_start = 1.0
+            seg_zoom_end = zoom_end
+            if args.zoom_style == "alternate" and (i % 2 == 1):
+                zoom_start = zoom_end
+                seg_zoom_end = 1.0
             seg = seg_dir / f"seg_{i:05d}.mp4"
             make_kb_segment(
                 still_path=still,
@@ -906,8 +920,9 @@ def main() -> int:
                 height=height,
                 seconds=args.seconds,
                 fps=args.fps,
-                zoom_end=zoom_end,
+                zoom_end=seg_zoom_end,
                 encode=encode,
+                zoom_start=zoom_start,
             )
             segments.append(seg)
             if (i + 1) % 15 == 0:
