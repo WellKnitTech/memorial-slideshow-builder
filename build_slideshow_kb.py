@@ -113,7 +113,11 @@ def encoder_smoke_test(codec: str, options: list[str]) -> bool:
     if proc.returncode == 0:
         return True
 
-    LOG.warning("Encoder %s failed smoke test and will be skipped: %s", codec, proc.stderr.strip())
+    err_lines = [line.strip() for line in proc.stderr.splitlines() if line.strip()]
+    reason = err_lines[0] if err_lines else "unknown error"
+    LOG.info("Encoder %s failed smoke test and will be skipped: %s", codec, reason)
+    if LOG.isEnabledFor(logging.DEBUG) and len(err_lines) > 1:
+        LOG.debug("Full %s smoke test stderr:\n%s", codec, proc.stderr.strip())
     return False
 
 
