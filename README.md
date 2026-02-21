@@ -38,7 +38,8 @@ You will be prompted to choose:
 3. Whether to add audio
 4. Output quality (`720p`, `1080p`, `4k`)
 5. Title card personalization (name, subtitle, colors, alignment)
-6. Timing settings
+6. Hero photo priority (optional)
+7. Timing settings
 
 ## Quick start (scripted)
 

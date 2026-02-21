@@ -741,6 +741,13 @@ def collect_interactive_settings(args: argparse.Namespace) -> None:
     else:
         args.no_title = True
 
+    include_hero = prompt("Pick hero photos to prioritize? (y/N)", "n").lower() in {"y", "yes"}
+    if include_hero:
+        eprint("Enter hero patterns separated by commas (filename, relative path, or glob).")
+        hero_raw = prompt("Hero photo patterns", "")
+        args.hero = [part.strip() for part in hero_raw.split(",") if part.strip()]
+        args.hero_first = prompt("Hero photo to force first (optional)", args.hero_first).strip()
+
     output_default = default_output_path_for_settings(name_line=args.name_line, include_title=not args.no_title)
     args.output = prompt("Output MP4 path", output_default)
 
