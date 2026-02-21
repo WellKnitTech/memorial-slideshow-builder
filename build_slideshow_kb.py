@@ -258,7 +258,13 @@ def build_photo_items(folder: Path, include_hashes: bool) -> list[PhotoItem]:
             items.append(PhotoItem(path=p, ts=best_timestamp_epoch(p), sha256=sha256, dhash64=dhash64))
         except Exception as e:
             LOG.warning("Skipping unreadable file %s: %s", p, e)
-    items.sort(key=lambda x: (x.ts, x.path.name.lower()))
+    items.sort(
+        key=lambda x: (
+            x.ts,
+            x.path.relative_to(folder).as_posix().lower(),
+            x.path.as_posix().lower(),
+        )
+    )
     return items
 
 
