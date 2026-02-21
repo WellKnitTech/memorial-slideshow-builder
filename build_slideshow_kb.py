@@ -434,7 +434,8 @@ def render_title_card(
     if footer:
         draw_text_block(draw, footer, footer_font, content_left, content_right, y, subtitle_rgb, align)
 
-    img.save(out_path, "JPEG", quality=92, optimize=True)
+    # Keep title source lossless so subtle zooms do not amplify JPEG artifacts.
+    img.save(out_path, "PNG", optimize=True)
 
 
 def make_kb_segment(
@@ -865,7 +866,7 @@ def main() -> int:
         has_title_content = any((args.title.strip(), args.name_line.strip(), args.subtitle.strip(), args.footer.strip()))
 
         if not args.no_title and has_title_content:
-            title_still = frames_dir / "still_00000.jpg"
+            title_still = frames_dir / "still_00000.png"
             render_title_card(
                 out_path=title_still,
                 canvas_size=canvas,
@@ -885,8 +886,10 @@ def main() -> int:
             try:
                 with Image.open(it.path) as im:
                     frame = fit_to_canvas(im, canvas, bg_rgb=frame_bg_rgb, margin_px=args.margin)
-                    fp = frames_dir / f"still_{idx:05d}.jpg"
-                    frame.save(fp, "JPEG", quality=92, optimize=True)
+                    fp = frames_dir / f"still_{idx:05d}.png"
+                    # Keep intermediate stills lossless to avoid micro-shimmer
+                    # from JPEG ringing during slow zoom sampling.
+                    frame.save(fp, "PNG", optimize=True)
                     stills.append(fp)
             except Exception as e:
                 LOG.warning("Skipping %s: %s", it.path, e)
