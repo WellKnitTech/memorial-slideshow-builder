@@ -56,7 +56,7 @@ def eprint(msg: str) -> None:
 
 def check_ffmpeg() -> None:
     if shutil.which("ffmpeg") is None:
-        raise RuntimeError("ffmpeg not found on PATH. Install it (pacman -S ffmpeg).")
+        raise RuntimeError("ffmpeg not found on PATH. Install ffmpeg with your OS package manager and retry.")
 
 
 def run_cmd(cmd: list[str]) -> None:

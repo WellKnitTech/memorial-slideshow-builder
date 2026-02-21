@@ -23,7 +23,7 @@ Create MP4 memorial slideshows from a folder of photos, with optional background
 python -m pip install --user --upgrade -r requirements.txt
 ```
 
-Also install `ffmpeg` using your OS package manager.
+Also install `ffmpeg` using your OS package manager. For example: `apt install ffmpeg`, `dnf install ffmpeg`, `brew install ffmpeg`, `choco install ffmpeg`, or `winget install Gyan.FFmpeg`.
 
 ## Quick start (interactive)
 
