@@ -25,10 +25,18 @@ python -m pip install --user --upgrade -r requirements.txt
 
 Also install `ffmpeg` using your OS package manager. For example: `apt install ffmpeg`, `dnf install ffmpeg`, `brew install ffmpeg`, `choco install ffmpeg`, or `winget install Gyan.FFmpeg`.
 
+## Cross-platform support
+
+This project runs on **Windows, macOS, and Linux**.
+
+- Use `python` commands in examples (on some Linux setups you can still use `python3`).
+- Install `ffmpeg` and ensure it is available on your `PATH`.
+- Hardware encoding auto-detection now relies on ffmpeg encoder availability rather than Linux-only device paths, so `--encoder auto` works more reliably across operating systems.
+
 ## Quick start (interactive)
 
 ```bash
-python3 build_slideshow_kb.py --start-project
+python build_slideshow_kb.py --start-project
 ```
 
 You will be prompted to choose:
@@ -44,7 +52,7 @@ You will be prompted to choose:
 ## Quick start (scripted)
 
 ```bash
-python3 build_slideshow_kb.py \
+python build_slideshow_kb.py \
   --photos ./photos \
   --output ./out/slideshow_4k.mp4 \
   --quality 4k \
@@ -76,7 +84,7 @@ Use these options to fully script title-card personalization:
 Example:
 
 ```bash
-python3 build_slideshow_kb.py \
+python build_slideshow_kb.py \
   --photos ./photos \
   --output ./out/slideshow.mp4 \
   --name-line "Jane Doe" \
@@ -103,7 +111,7 @@ The builder can automatically use hardware encoders when available:
 Example:
 
 ```bash
-python3 build_slideshow_kb.py \
+python build_slideshow_kb.py \
   --photos ./photos \
   --output ./out/slideshow.mp4 \
   --quality 1080p \
@@ -114,8 +122,10 @@ If a forced encoder is unavailable on your machine, the script exits with a clea
 
 ## Wrapper scripts
 
-- `./make.sh` - basic 1080p run
-- `./sample_run.sh` - 1080p run with audio
+- `./make.sh` - basic 1080p run (macOS/Linux)
+- `./sample_run.sh` - 1080p run with audio (macOS/Linux)
+- `./make.ps1` - basic 1080p run (Windows PowerShell)
+- `./sample_run.ps1` - 1080p run with audio (Windows PowerShell)
 
 ## Hero photos (priority ordering)
 
@@ -128,7 +138,7 @@ You can promote specific photos to appear earlier with:
 Example:
 
 ```bash
-python3 build_slideshow_kb.py \
+python build_slideshow_kb.py \
   --photos ./photos \
   --output ./out/slideshow.mp4 \
   --hero "favorites/*.jpg" \

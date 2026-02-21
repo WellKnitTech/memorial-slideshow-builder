@@ -125,8 +125,8 @@ def encoder_smoke_test(codec: str, options: list[str]) -> bool:
 def pick_encoder(mode: str, crf: int, preset: str) -> EncodeConfig:
     encoders = get_ffmpeg_encoders()
 
-    has_nvenc = "h264_nvenc" in encoders and (shutil.which("nvidia-smi") is not None or Path("/dev/nvidia0").exists())
-    has_qsv = "h264_qsv" in encoders and Path("/dev/dri/renderD128").exists()
+    has_nvenc = "h264_nvenc" in encoders
+    has_qsv = "h264_qsv" in encoders
 
     if mode == "nvidia":
         if not has_nvenc:
@@ -392,10 +392,19 @@ def fit_to_canvas(img: Image.Image, canvas_size: tuple[int, int], bg_rgb=(12, 12
 
 def try_load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     candidates = [
+        # Linux
         "/usr/share/fonts/TTF/DejaVuSerif.ttf",
         "/usr/share/fonts/TTF/DejaVuSans.ttf",
         "/usr/share/fonts/TTF/LiberationSerif-Regular.ttf",
         "/usr/share/fonts/TTF/LiberationSans-Regular.ttf",
+        # macOS
+        "/System/Library/Fonts/Supplemental/Times New Roman.ttf",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/Library/Fonts/Arial.ttf",
+        # Windows
+        "C:/Windows/Fonts/segoeui.ttf",
+        "C:/Windows/Fonts/arial.ttf",
+        "C:/Windows/Fonts/times.ttf",
     ]
     for p in candidates:
         fp = Path(p)

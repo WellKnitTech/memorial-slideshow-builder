@@ -1,0 +1,17 @@
+$ErrorActionPreference = "Stop"
+
+python .\build_slideshow_kb.py `
+  --photos .\photos `
+  --output .\out\slideshow_1080p.mp4 `
+  --quality 1080p `
+  --seconds 6 `
+  --fade 1 `
+  --fps 30 `
+  --zoom-end 1.06 `
+  --dedup-mode both `
+  --dhash-threshold 6 `
+  --audio .\audio\track.mp3 `
+  --audio-fade-in 2.5 `
+  --audio-fade-out 3.5 `
+  --title "In Loving Memory" `
+  --subtitle "Celebrating a life well lived"
