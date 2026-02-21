@@ -693,6 +693,42 @@ def prompt(text: str, default: str | None = None) -> str:
     return value or (default or "")
 
 
+def prompt_float(text: str, default: float, *, positive: bool = False) -> float:
+    while True:
+        raw = prompt(text, str(default))
+        try:
+            value = float(raw)
+        except ValueError:
+            msg = "Please enter a number"
+            if positive:
+                msg += " greater than 0"
+            eprint(f"{msg}.")
+            continue
+
+        if positive and value <= 0:
+            eprint("Please enter a number greater than 0.")
+            continue
+        return value
+
+
+def prompt_int(text: str, default: int, *, positive: bool = False) -> int:
+    while True:
+        raw = prompt(text, str(default))
+        try:
+            value = int(raw)
+        except ValueError:
+            msg = "Please enter a whole number"
+            if positive:
+                msg += " greater than 0"
+            eprint(f"{msg}.")
+            continue
+
+        if positive and value <= 0:
+            eprint("Please enter a whole number greater than 0.")
+            continue
+        return value
+
+
 def choose_quality_interactive() -> str:
     options = ["720p", "1080p", "4k"]
     eprint("\nChoose output quality:")
@@ -751,8 +787,8 @@ def collect_interactive_settings(args: argparse.Namespace) -> None:
     output_default = default_output_path_for_settings(name_line=args.name_line, include_title=not args.no_title)
     args.output = prompt("Output MP4 path", output_default)
 
-    args.seconds = float(prompt("Seconds per slide", str(args.seconds)))
-    args.fps = int(prompt("Frames per second", str(args.fps)))
+    args.seconds = prompt_float("Seconds per slide", args.seconds, positive=True)
+    args.fps = prompt_int("Frames per second", args.fps, positive=True)
 
 
 def resolve_dimensions(quality: str | None, width: int, height: int) -> tuple[int, int]:
