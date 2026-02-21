@@ -39,8 +39,8 @@ EXIF_DATETIME = 306
 class PhotoItem:
     path: Path
     ts: float
-    sha256: str
-    dhash64: int
+    sha256: Optional[str] = None
+    dhash64: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -249,11 +249,13 @@ def list_candidate_files(folder: Path) -> list[Path]:
     return sorted(files, key=lambda x: x.name.lower())
 
 
-def build_photo_items(folder: Path) -> list[PhotoItem]:
+def build_photo_items(folder: Path, include_hashes: bool) -> list[PhotoItem]:
     items: list[PhotoItem] = []
     for p in list_candidate_files(folder):
         try:
-            items.append(PhotoItem(path=p, ts=best_timestamp_epoch(p), sha256=sha256_file(p), dhash64=dhash_64(p)))
+            sha256 = sha256_file(p) if include_hashes else None
+            dhash64 = dhash_64(p) if include_hashes else None
+            items.append(PhotoItem(path=p, ts=best_timestamp_epoch(p), sha256=sha256, dhash64=dhash64))
         except Exception as e:
             LOG.warning("Skipping unreadable file %s: %s", p, e)
     items.sort(key=lambda x: (x.ts, x.path.name.lower()))
@@ -272,6 +274,9 @@ def dedup_items(items: list[PhotoItem], dedup_mode: str, dhash_threshold: int) -
         seen_sha: set[str] = set()
         tmp: list[PhotoItem] = []
         for it in survivors:
+            if it.sha256 is None:
+                tmp.append(it)
+                continue
             if it.sha256 in seen_sha:
                 stats["exact_skipped"] += 1
                 LOG.info("Exact duplicate skipped: %s", it.path)
@@ -283,9 +288,12 @@ def dedup_items(items: list[PhotoItem], dedup_mode: str, dhash_threshold: int) -
     if dedup_mode in ("perceptual", "both"):
         kept: list[PhotoItem] = []
         for it in survivors:
+            if it.dhash64 is None:
+                kept.append(it)
+                continue
             is_dup = False
             for k in kept:
-                if hamming64(it.dhash64, k.dhash64) <= dhash_threshold:
+                if k.dhash64 is not None and hamming64(it.dhash64, k.dhash64) <= dhash_threshold:
                     stats["perceptual_skipped"] += 1
                     LOG.info("Near-duplicate skipped: %s (matches %s)", it.path.name, k.path.name)
                     is_dup = True
@@ -958,7 +966,7 @@ def main() -> int:
             LOG.error("Audio file not found: %s", audio_path)
             return 2
 
-    items = build_photo_items(photos_dir)
+    items = build_photo_items(photos_dir, include_hashes=args.dedup_mode != "off")
     if not items:
         LOG.error("No supported photos found under: %s", photos_dir)
         return 2
