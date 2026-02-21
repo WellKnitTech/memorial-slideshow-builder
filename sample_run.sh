@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-python3 build_slideshow_kb.py \
+python build_slideshow_kb.py \
   --photos ./photos \
   --output ./out/slideshow_1080p.mp4 \
   --quality 1080p \
