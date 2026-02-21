@@ -38,7 +38,8 @@ You will be prompted to choose:
 3. Whether to add audio
 4. Output quality (`720p`, `1080p`, `4k`)
 5. Title card personalization (name, subtitle, colors, alignment)
-6. Timing settings
+6. Hero photo priority (optional)
+7. Timing settings
 
 ## Quick start (scripted)
 
@@ -115,6 +116,30 @@ If a forced encoder is unavailable on your machine, the script exits with a clea
 
 - `./make.sh` - basic 1080p run
 - `./sample_run.sh` - 1080p run with audio
+
+## Hero photos (priority ordering)
+
+By default, photos are ordered chronologically using EXIF date (fallback: file modified time).
+You can promote specific photos to appear earlier with:
+
+- `--hero <pattern>`: mark one or more photos as high-priority (repeatable; supports filename, relative path, or glob)
+- `--hero-first <pattern>`: force one matching photo to be first, regardless of timestamp
+
+Example:
+
+```bash
+python3 build_slideshow_kb.py \
+  --photos ./photos \
+  --output ./out/slideshow.mp4 \
+  --hero "favorites/*.jpg" \
+  --hero "mom_portrait.png" \
+  --hero-first "family/cover_photo.jpg"
+```
+
+Matching behavior:
+- Patterns are checked against both relative path and filename.
+- If multiple files match `--hero-first`, the earliest file in the existing slideshow order is chosen.
+- If `--hero-first` matches nothing, a warning is logged and normal ordering is used.
 
 ## Notes
 

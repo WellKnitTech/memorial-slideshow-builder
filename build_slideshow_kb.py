@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import hashlib
 import logging
 import math
@@ -294,6 +295,62 @@ def dedup_items(items: list[PhotoItem], dedup_mode: str, dhash_threshold: int) -
         survivors = kept
 
     return survivors, stats
+
+
+def reorder_hero_items(
+    items: list[PhotoItem], photos_dir: Path, hero_patterns: list[str], hero_first: str
+) -> tuple[list[PhotoItem], dict[str, int]]:
+    if not items:
+        return items, {"hero_matched": 0, "hero_first_applied": 0}
+
+    normalized_patterns = [p.strip() for p in hero_patterns if p.strip()]
+
+    def path_matches_pattern(path: Path, raw_pattern: str) -> bool:
+        p = raw_pattern.replace("\\", "/")
+        rel = path.relative_to(photos_dir).as_posix()
+        name = path.name
+
+        if p.startswith("./"):
+            p = p[2:]
+
+        return any(
+            (
+                fnmatch.fnmatch(rel, p),
+                fnmatch.fnmatch(name, p),
+                rel == p,
+                name == p,
+            )
+        )
+
+    hero_set: set[Path] = set()
+    for pattern in normalized_patterns:
+        for it in items:
+            if path_matches_pattern(it.path, pattern):
+                hero_set.add(it.path)
+
+    hero_items = [it for it in items if it.path in hero_set]
+    normal_items = [it for it in items if it.path not in hero_set]
+
+    hero_first_applied = 0
+    hero_first_clean = hero_first.strip()
+    if hero_first_clean:
+        chosen_idx = next(
+            (idx for idx, it in enumerate(items) if path_matches_pattern(it.path, hero_first_clean)),
+            None,
+        )
+        if chosen_idx is None:
+            LOG.warning("--hero-first did not match any photo: %s", hero_first_clean)
+        else:
+            chosen = items[chosen_idx]
+            hero_items = [it for it in hero_items if it.path != chosen.path]
+            normal_items = [it for it in normal_items if it.path != chosen.path]
+            hero_first_applied = 1
+            return [chosen, *hero_items, *normal_items], {
+                "hero_matched": len(hero_set),
+                "hero_first_applied": hero_first_applied,
+            }
+
+    return [*hero_items, *normal_items], {"hero_matched": len(hero_set), "hero_first_applied": hero_first_applied}
 
 
 def fit_to_canvas(img: Image.Image, canvas_size: tuple[int, int], bg_rgb=(12, 12, 12), margin_px: int = 60) -> Image.Image:
@@ -684,6 +741,13 @@ def collect_interactive_settings(args: argparse.Namespace) -> None:
     else:
         args.no_title = True
 
+    include_hero = prompt("Pick hero photos to prioritize? (y/N)", "n").lower() in {"y", "yes"}
+    if include_hero:
+        eprint("Enter hero patterns separated by commas (filename, relative path, or glob).")
+        hero_raw = prompt("Hero photo patterns", "")
+        args.hero = [part.strip() for part in hero_raw.split(",") if part.strip()]
+        args.hero_first = prompt("Hero photo to force first (optional)", args.hero_first).strip()
+
     output_default = default_output_path_for_settings(name_line=args.name_line, include_title=not args.no_title)
     args.output = prompt("Output MP4 path", output_default)
 
@@ -758,6 +822,20 @@ def build_parser() -> argparse.ArgumentParser:
         default=6,
         help="Near-duplicate threshold (lower is stricter). Typical: 4-8. Start with 6.",
     )
+    ap.add_argument(
+        "--hero",
+        action="append",
+        default=[],
+        help=(
+            "Mark photos as hero/high-priority. May be repeated; supports relative path, filename, or glob "
+            "(for example: --hero 'Mom_*.jpg' or --hero 'favorites/*.png')."
+        ),
+    )
+    ap.add_argument(
+        "--hero-first",
+        default="",
+        help="Force one specific photo to be first (path, filename, or glob), regardless of EXIF/mtime order.",
+    )
 
     ap.add_argument("--crf", type=int, default=18, help="x264 CRF quality (lower is higher quality). 18 is excellent.")
     ap.add_argument("--preset", default="medium", choices=["slow", "medium", "fast"], help="Encoding speed vs efficiency.")
@@ -831,12 +909,20 @@ def main() -> int:
         return 2
 
     survivors, stats = dedup_items(items, args.dedup_mode, args.dhash_threshold)
+    survivors, hero_stats = reorder_hero_items(
+        survivors,
+        photos_dir=photos_dir,
+        hero_patterns=args.hero,
+        hero_first=args.hero_first,
+    )
     LOG.info(
-        "Photos: %d total, %d used. Skipped exact=%d, near=%d",
+        "Photos: %d total, %d used. Skipped exact=%d, near=%d, hero=%d, hero_first=%d",
         len(items),
         len(survivors),
         stats["exact_skipped"],
         stats["perceptual_skipped"],
+        hero_stats["hero_matched"],
+        hero_stats["hero_first_applied"],
     )
 
     if not survivors:
