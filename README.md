@@ -119,7 +119,7 @@ If a forced encoder is unavailable on your machine, the script exits with a clea
 
 ## Hero photos (priority ordering)
 
-By default, photos are ordered chronologically using EXIF date (fallback: file modified time).
+By default, photos are ordered chronologically using EXIF date (fallback: file modified time), with deterministic path-based tie-breakers to keep ordering reproducible across runs/platforms.
 You can promote specific photos to appear earlier with:
 
 - `--hero <pattern>`: mark one or more photos as high-priority (repeatable; supports filename, relative path, or glob)
